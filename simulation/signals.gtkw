@@ -1,0 +1,64 @@
+[*]
+[*] GTKWave Analyzer v3.3.86 (w)1999-2017 BSI
+[*] Thu Jul  2 13:13:03 2020
+[*]
+[dumpfile] "/disk1/home/dmb/atom/BeebAccelerator/simulation/dump.vcd"
+[dumpfile_mtime] "Thu Jul  2 13:08:55 2020"
+[dumpfile_size] 980836
+[savefile] "/disk1/home/dmb/atom/BeebAccelerator/simulation/signals.gtkw"
+[timestart] 0
+[size] 1571 1048
+[pos] -1 -1
+*-16.000000 3530 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[treeopen] beeb_accelerator_tb.
+[treeopen] beeb_accelerator_tb.DUT.
+[treeopen] beeb_accelerator_tb.DUT.cpu.
+[sst_width] 223
+[signals_width] 166
+[sst_expanded] 1
+[sst_vpaned_height] 310
+@28
+beeb_accelerator_tb.DUT.Res_n
+beeb_accelerator_tb.DUT.cpu_reset
+@22
+beeb_accelerator_tb.DUT.Addr[15:0]
+@28
+beeb_accelerator_tb.DUT.DIRD
+@22
+beeb_accelerator_tb.DUT.Data[7:0]
+@28
+beeb_accelerator_tb.DUT.Phi0_a
+beeb_accelerator_tb.DUT.Phi0_b
+beeb_accelerator_tb.DUT.Phi0_c
+beeb_accelerator_tb.DUT.Phi0_d
+beeb_accelerator_tb.DUT.Phi1Out
+beeb_accelerator_tb.DUT.Phi2Out
+beeb_accelerator_tb.DUT.PhiIn
+beeb_accelerator_tb.DUT.clock
+beeb_accelerator_tb.DUT.cpu_clken
+beeb_accelerator_tb.DUT.state
+@29
+beeb_accelerator_tb.DUT.is_internal_r
+@22
+beeb_accelerator_tb.DUT.cpu_AB_next[15:0]
+beeb_accelerator_tb.DUT.cpu_AB[15:0]
+@28
+beeb_accelerator_tb.DUT.cpu_WE_next
+beeb_accelerator_tb.DUT.cpu_WE
+@22
+beeb_accelerator_tb.DUT.cpu_DO_next[7:0]
+beeb_accelerator_tb.DUT.cpu_DO[7:0]
+beeb_accelerator_tb.DUT.beeb_AB[15:0]
+@28
+beeb_accelerator_tb.DUT.beeb_WE
+@22
+beeb_accelerator_tb.DUT.beeb_DO[7:0]
+beeb_accelerator_tb.DUT.cpu_DI[7:0]
+beeb_accelerator_tb.DUT.data_r[7:0]
+beeb_accelerator_tb.DUT.id[3:0]
+@28
+beeb_accelerator_tb.DUT.is_internal
+@22
+beeb_accelerator_tb.DUT.ram_dout[7:0]
+[pattern_trace] 1
+[pattern_trace] 0
