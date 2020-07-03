@@ -69,7 +69,9 @@ module beeb_accelerator
    wire        clock64;
    wire        clk0;
 
-   reg [3:0]   clk_div = 'b0;
+   reg [5:0]   clk_div = 'b0;
+   reg [5:0]   cpu_div = 'b0;
+
    reg         Phi0_a;
    reg         Phi0_b;
    reg         Phi0_c;
@@ -103,9 +105,6 @@ module beeb_accelerator
    reg [3:0]   rom_latch;
 
    wire [7:0]  page = cpu_AB[15:8];
-
-   // When running internally, the CPU is clocked at 64 / CPU_DIV MHz
-   localparam  CPU_DIV = 1;
 
    // 50->64MHz clock
    DCM
@@ -164,7 +163,7 @@ module beeb_accelerator
       Phi0_c <= Phi0_b;
       Phi0_d <= Phi0_c;
       // Internally the CPU runs at 64/CPU_DIV MHz
-      if (clk_div == CPU_DIV - 1)
+      if (clk_div == cpu_div)
         clk_div <= 'b0;
       else
         clk_div <= clk_div + 1'b1;
@@ -231,6 +230,10 @@ module beeb_accelerator
             force_slowdown <= 'h1;
         else if (force_slowdown > 0)
           force_slowdown <= force_slowdown - 1'b1;
+      // Writes to the speed register
+      if (ext_cycle_end)
+        if (cpu_AB == 16'hfe38 && cpu_WE)
+          cpu_div <= cpu_DO[5:0] - 1'b1;
    end
 
    // Register the outputs of Arlet's core
