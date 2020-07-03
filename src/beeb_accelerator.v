@@ -91,6 +91,7 @@ module beeb_accelerator
    reg         cpu_NMI;
    reg         cpu_RDY;
    wire        is_internal;
+   reg [3:0]   force_slowdown;
 
    reg [7:0]   ram[0:65535];
    reg [7:0]   ram_dout;
@@ -103,6 +104,8 @@ module beeb_accelerator
 
    wire [7:0]  page = cpu_AB[15:8];
 
+   // When running internally, the CPU is clocked at 64 / CPU_DIV MHz
+   localparam  CPU_DIV = 1;
 
    // 50->64MHz clock
    DCM
@@ -160,8 +163,8 @@ module beeb_accelerator
       Phi0_b <= Phi0_a;
       Phi0_c <= Phi0_b;
       Phi0_d <= Phi0_c;
-      // 64/8=8.00MHz
-      if (clk_div == 7)
+      // Internally the CPU runs at 64/CPU_DIV MHz
+      if (clk_div == CPU_DIV - 1)
         clk_div <= 'b0;
       else
         clk_div <= clk_div + 1'b1;
@@ -191,7 +194,7 @@ module beeb_accelerator
                           );
 
    // When to advance the internal core a tick
-   assign cpu_clken = (is_internal && clk_div == 0) ? 1'b1 :
+   assign cpu_clken = (is_internal && clk_div == 0 && !(|force_slowdown)) ? 1'b1 :
                       (ext_busy && ext_cycle_end) ? 1'b1 :
                       1'b0;
 
@@ -213,6 +216,21 @@ module beeb_accelerator
             ext_busy <= 1'b1;
          end
       end
+      // Following a write to the addressable latch, we need to slow the CPU for
+      // a further few cycles, otherwise the keyboard and sound chips misbehave.
+      // In the case of the sound chip, a software delay loop gives a write pulse
+      // of 9us. A force_slowdown of ~15 minics this (assume bus cycles are 500ns).
+      // In the case of the keyboard, a much smaller delay is acceptable, and we
+      // we set force_slowdown to 1. When ever force_slowdown is non-zero, the
+      // CPU runs at a maximum of 2MHz.
+      if (ext_cycle_end)
+        if (cpu_AB == 16'hfe40 && cpu_WE)
+          if (cpu_DO[2:0] == 0)
+            force_slowdown <= 'hf;
+          else
+            force_slowdown <= 'h1;
+        else if (force_slowdown > 0)
+          force_slowdown <= force_slowdown - 1'b1;
    end
 
    // Register the outputs of Arlet's core
