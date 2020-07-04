@@ -267,8 +267,8 @@ module beeb_accelerator
 
    assign cpu_DI = is_internal ? ram_dout : data_r;
 
-   // Sample Data on the falling edge of PhiIn
-   always @(negedge PhiIn) begin
+   // Sample Data on the falling edge of Phi2 (ref A in the datasheet)
+   always @(negedge Phi2Out) begin
       data_r <= Data;
    end
 
