@@ -66,16 +66,32 @@ module beeb_accelerator
 
  );
 
-   wire        clock64;
+   // 64 MHz - meets timing
+   //localparam  NPHI0_REGS = 4;
+   //localparam  PHIOUT_TAP = 1;
+   //localparam  DCM_MULT   = 32;
+   //localparam  DCM_DIV    = 25;
+
+   // 80MHz - meets timing
+   localparam  NPHI0_REGS = 5;
+   localparam  PHIOUT_TAP = 1;
+   localparam  DCM_MULT   = 8;
+   localparam  DCM_DIV    = 5;
+
+   // 100 MHz (doesn't meet timing, but seems stable in practice)
+   //localparam  NPHI0_REGS = 6;
+   //localparam  PHIOUT_TAP = 1;
+   //localparam  DCM_MULT   = 4;
+   //localparam  DCM_DIV    = 2;
+
+   wire        cpu_clk;
    wire        clk0;
 
    reg [5:0]   clk_div = 'b0;
    reg [5:0]   cpu_div = 'b0;
 
-   reg         Phi0_a;
-   reg         Phi0_b;
-   reg         Phi0_c;
-   reg         Phi0_d;
+   reg [NPHI0_REGS-1:0] Phi0_r;
+
    wire        cpu_clken;
    reg         cpu_reset;
    wire [15:0] cpu_AB_next;
@@ -106,11 +122,11 @@ module beeb_accelerator
 
    wire [7:0]  page = cpu_AB[15:8];
 
-   // 50->64MHz clock
+   // PLL to generate CPU clock of 50 * DCM_MULT / DCM_DIV MHz
    DCM
      #(
-       .CLKFX_MULTIPLY   (32),
-       .CLKFX_DIVIDE     (25),
+       .CLKFX_MULTIPLY   (DCM_MULT),
+       .CLKFX_DIVIDE     (DCM_DIV),
        .CLKIN_PERIOD     (20.000),
        .CLK_FEEDBACK     ("1X")
        )
@@ -123,7 +139,7 @@ module beeb_accelerator
       .PSINCDEC         (1'b0),
       .PSEN             (1'b0),
       .PSCLK            (1'b0),
-      .CLKFX            (clock64),
+      .CLKFX            (cpu_clk),
       .CLKFX180         (),
       .CLKDV            (),
       .CLK2X            (),
@@ -137,31 +153,28 @@ module beeb_accelerator
       .STATUS           ()
       );
 
-
    // Internal 64KB Block RAM - initialization data
    initial
      $readmemh("../src/ram.mem", ram);
 
    // Shadow ROM latch
-   always @(posedge clock64)
+   always @(posedge cpu_clk)
      if (cpu_clken)
        if (cpu_WE && cpu_AB == 16'hFE30)
          rom_latch <= cpu_DO[3:0];
 
    // Internal 64KB Block RAM
-   always @(posedge clock64)
+   always @(posedge cpu_clk)
      if (cpu_clken) begin
         if (cpu_WE_next & !cpu_AB_next[15])
           ram[cpu_AB_next] <= cpu_DO_next;
         ram_dout <= ram[cpu_AB_next];
      end
 
-   // Clock delay chain; each step is 20ns
-   always @(posedge clock64) begin
-      Phi0_a <= PhiIn;
-      Phi0_b <= Phi0_a;
-      Phi0_c <= Phi0_b;
-      Phi0_d <= Phi0_c;
+   // Clock delay chain
+   always @(posedge cpu_clk) begin
+      // Synchronise/delay PhiIn
+      Phi0_r <= { Phi0_r[NPHI0_REGS-2:0], PhiIn };
       // Internally the CPU runs at 64/CPU_DIV MHz
       if (clk_div == cpu_div)
         clk_div <= 'b0;
@@ -169,13 +182,13 @@ module beeb_accelerator
         clk_div <= clk_div + 1'b1;
    end
 
-   assign Phi1Out = !Phi0_b;
-   assign Phi2Out =  Phi0_b;
+   assign Phi1Out = !Phi0_r[PHIOUT_TAP];
+   assign Phi2Out =  Phi0_r[PHIOUT_TAP];
 
    // Arlet's 65C02 Core
    cpu_65c02 cpu
      (
-      .clk(clock64),
+      .clk(cpu_clk),
       .reset(cpu_reset),
       .AB(cpu_AB_next),
       .DI(cpu_DI),
@@ -198,9 +211,9 @@ module beeb_accelerator
                       1'b0;
 
    // Offset the external cycle by a couple of ticks to give some address hold time
-   assign ext_cycle_end = Phi0_d & !Phi0_c;
+   assign ext_cycle_end = Phi0_r[NPHI0_REGS-1] & !Phi0_r[NPHI0_REGS-2];
 
-   always @(posedge clock64) begin
+   always @(posedge cpu_clk) begin
       ext_cycle_start <= ext_cycle_end;
       if (ext_cycle_start) begin
          if (is_internal) begin
@@ -237,7 +250,7 @@ module beeb_accelerator
    end
 
    // Register the outputs of Arlet's core
-   always @(posedge clock64) begin
+   always @(posedge cpu_clk) begin
       if (cpu_clken) begin
          cpu_AB <= cpu_AB_next;
          cpu_WE <= cpu_WE_next;
@@ -245,8 +258,8 @@ module beeb_accelerator
       end
    end
 
-   // Synchronise possible asynchronous inputs
-   always @(posedge clock64) begin
+   // Synchronise asynchronous inputs
+   always @(posedge cpu_clk) begin
       cpu_reset <= !Res_n;
       cpu_IRQ <= !IRQ_n;
       cpu_NMI <= !NMI_n;
@@ -254,12 +267,12 @@ module beeb_accelerator
 
    assign cpu_DI = is_internal ? ram_dout : data_r;
 
-   // Sample Data on the falling edge of Phi0_a
+   // Sample Data on the falling edge of PhiIn
    always @(negedge PhiIn) begin
       data_r <= Data;
    end
 
-   assign Data    = (Phi0_c & beeb_WE) ? beeb_DO : 8'bZ;
+   assign Data    = (beeb_WE & PhiIn) ? beeb_DO : 8'bZ;
    assign Addr    = beeb_AB;
    assign R_W_n   = {2{!beeb_WE}};
    assign Sync    = 'b0;
@@ -272,7 +285,7 @@ module beeb_accelerator
    assign OERW_n  = 'b0;
    assign OEAH_n  = 'b0;
    assign OEAL_n  = 'b0;
-   assign OED_n   = !(BE & PhiIn & Phi0_d);
+   assign OED_n   = !(BE & PhiIn);
    assign DIRD    = !beeb_WE;
 
    // Misc
