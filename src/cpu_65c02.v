@@ -183,7 +183,6 @@ reg sed;                // set decimal
 reg cli;                // clear interrupt
 reg sei;                // set interrupt
 reg clv;                // clear overflow
-reg brk;                // doing BRK
 
 reg res;                // in reset
 
@@ -490,7 +489,7 @@ always @*
 
         BRK2:    DO = (IRQ | NMI_edge) ? (P & 8'b1110_1111) : P;
 
-        default: DO = store_zero ? 0 : regfile;
+        default: DO = store_zero ? 8'b0 : regfile;
     endcase
 
 /*
@@ -729,7 +728,7 @@ always @*
 
         BRA1:   AI = ABH;       // don't use PCH in case we're
 
-        FETCH:  AI = load_only ? 0 : regfile;
+        FETCH:  AI = load_only ? 8'b0 : regfile;
 
         DECODE,
         ABS1:   AI = 8'hxx;     // don't care
@@ -788,11 +787,11 @@ always @*
 
         READ,
         REG:    CI = rotate ? C :
-                     shift ? 0 : inc;
+                     shift ? 1'b0 : inc;
 
         FETCH:  CI = rotate  ? C :
-                     compare ? 1 :
-                     (shift | load_only) ? 0 : C;
+                     compare ? 1'b1 :
+                     (shift | load_only) ? 1'b0 : C;
 
         PULL0,
         RTI0,
@@ -1360,7 +1359,6 @@ always @(posedge clk )
         clv <= (IR == 8'hb8);
         cld <= (IR == 8'hd8);
         sed <= (IR == 8'hf8);
-        brk <= (IR == 8'h00);
      end
 
 always @(posedge clk)

@@ -70,7 +70,7 @@ always @* begin
 	case( op[3:2] )
 	    2'b00: temp_BI = BI;	// A+B
 	    2'b01: temp_BI = ~BI;	// A-B
-	    2'b10: temp_BI = temp_logic;	// A+A
+	    2'b10: temp_BI = temp_logic[7:0];	// A+A
 	    2'b11: temp_BI = 0;		// A+0
 	endcase	
 end
