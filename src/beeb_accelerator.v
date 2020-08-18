@@ -108,8 +108,9 @@ module beeb_accelerator
    reg         cpu_IRQ;
    reg         cpu_NMI;
    reg         cpu_RDY;
+   wire        cpu_SYNC;
    wire        is_internal;
-   reg [3:0]   force_slowdown;
+   reg [3:0]   force_slowdown = 4'b0;
 
    reg [7:0]   ram[0:65535];
    reg [7:0]   ram_dout;
@@ -121,6 +122,14 @@ module beeb_accelerator
    reg [3:0]   rom_latch;
 
    wire [7:0]  page = cpu_AB[15:8];
+
+   reg         shadow = 1'b0;
+   reg         vdu_op;
+
+   wire        is_FE30 = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b00);
+   wire        is_FE34 = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b01);
+   wire        is_FE38 = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b10);
+
 
    // PLL to generate CPU clock of 50 * DCM_MULT / DCM_DIV MHz
    DCM
@@ -157,16 +166,24 @@ module beeb_accelerator
    initial
      $readmemh("../src/ram.mem", ram);
 
-   // Shadow ROM latch
+   // Writable Registers
    always @(posedge cpu_clk)
-     if (cpu_clken)
-       if (cpu_WE && cpu_AB == 16'hFE30)
-         rom_latch <= cpu_DO[3:0];
+     if (cpu_clken) begin
+        if (ext_cycle_end & cpu_WE) begin
+           if (is_FE30)
+             rom_latch <= cpu_DO[3:0];
+           if (is_FE34)
+             shadow <= cpu_DO[7];
+           if (is_FE38)
+             cpu_div <= cpu_DO[5:0] - 1'b1;
+        end
+     end
 
    // Internal 64KB Block RAM
    always @(posedge cpu_clk)
      if (cpu_clken) begin
-        if (cpu_WE_next & !cpu_AB_next[15])
+//        if (cpu_WE_next && !cpu_AB_next[15] && (cpu_AB_next[14:12] < 3'b011 || !vdu_op || !shadow))
+        if (cpu_WE_next && (cpu_AB_next[14:12] < 3'b011 || !vdu_op || !shadow))
           ram[cpu_AB_next] <= cpu_DO_next;
         ram_dout <= ram[cpu_AB_next];
      end
@@ -196,11 +213,12 @@ module beeb_accelerator
       .WE(cpu_WE_next),
       .IRQ(cpu_IRQ),
       .NMI(cpu_NMI),
-      .RDY(cpu_clken)
+      .RDY(cpu_clken),
+      .SYNC(cpu_SYNC)
       );
 
    // Determine if the access is internal or external
-   assign is_internal = !((page >= 8'h30 && page < 8'h80 && cpu_WE)          | // Writes to Screen RAM are external
+   assign is_internal = !((page >= 8'h30 && page < 8'h80 && (shadow ? vdu_op : cpu_WE)) | // Accesses to Screen RAM from the first half of the OS are external
                           (page >= 8'h80 && page < 8'hC0 && rom_latch != 15) | // Accesses to ROMs other then BASIC are external
                           (page >= 8'hfc && page < 8'hff)                      // Accesses to IO are external
                           );
@@ -244,9 +262,6 @@ module beeb_accelerator
         else if (force_slowdown > 0)
           force_slowdown <= force_slowdown - 1'b1;
       // Writes to the speed register
-      if (ext_cycle_end)
-        if (cpu_AB == 16'hfe38 && cpu_WE)
-          cpu_div <= cpu_DO[5:0] - 1'b1;
    end
 
    // Register the outputs of Arlet's core
@@ -255,6 +270,8 @@ module beeb_accelerator
          cpu_AB <= cpu_AB_next;
          cpu_WE <= cpu_WE_next;
          cpu_DO <= cpu_DO_next;
+         if (cpu_SYNC)
+           vdu_op <= cpu_AB[15:13] == 3'b110;
       end
    end
 
@@ -265,7 +282,12 @@ module beeb_accelerator
       cpu_NMI <= !NMI_n;
    end
 
-   assign cpu_DI = is_internal ? ram_dout : data_r;
+   // CPU Din Multiplexor
+   assign cpu_DI = is_internal ? ram_dout          :
+                   is_FE30     ? {4'b0, rom_latch} :
+                   is_FE34     ? {shadow, 7'b0}    :
+                   is_FE38     ? {2'b0, cpu_div}   :
+                   data_r;
 
    // Sample Data on the falling edge of Phi2 (ref A in the datasheet)
    always @(negedge Phi2Out) begin
@@ -275,7 +297,7 @@ module beeb_accelerator
    assign Data    = (beeb_WE & PhiIn) ? beeb_DO : 8'bZ;
    assign Addr    = beeb_AB;
    assign R_W_n   = {2{!beeb_WE}};
-   assign Sync    = 'b0;
+   assign Sync    = cpu_SYNC;
 
    // 65C02 Outputs
    assign ML_n    = 'b1;
