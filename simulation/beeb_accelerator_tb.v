@@ -13,6 +13,8 @@ module beeb_accelerator_tb();
    reg [7:0]   mem_out;
 
    wire        RnW = R_W_n[0];
+   wire        Phi2Out;
+   wire        Sync;
 
    integer     i;
 
@@ -55,7 +57,7 @@ module beeb_accelerator_tb();
      if (!RnW)
         ext_memory[Addr] <= Data;
 
-   assign Data = (!RnW || !PhiIn)                               ? 8'hZZ :
+   assign Data = (!RnW || !Phi2Out)                             ? 8'hZZ :
                  (Addr[15:8] >= 8'hfc) && (Addr[15:8] <= 8'hfe) ? 8'h00 : ext_memory[Addr];
 
 
@@ -66,10 +68,10 @@ beeb_accelerator DUT
    // 6502 Signals
    .PhiIn(PhiIn),
    .Phi1Out(),
-   .Phi2Out(),
+   .Phi2Out(Phi2Out),
    .IRQ_n(1'b1),
    .NMI_n(1'b1),
-   .Sync(),
+   .Sync(Sync),
    .Addr(Addr),
    .R_W_n(R_W_n),
    .Data(Data),

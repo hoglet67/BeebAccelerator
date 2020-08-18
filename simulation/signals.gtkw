@@ -1,15 +1,15 @@
 [*]
 [*] GTKWave Analyzer v3.3.86 (w)1999-2017 BSI
-[*] Thu Jul  2 13:13:03 2020
+[*] Tue Aug 18 15:03:15 2020
 [*]
 [dumpfile] "/disk1/home/dmb/atom/BeebAccelerator/simulation/dump.vcd"
-[dumpfile_mtime] "Thu Jul  2 13:08:55 2020"
-[dumpfile_size] 980836
+[dumpfile_mtime] "Tue Aug 18 15:02:14 2020"
+[dumpfile_size] 22441784
 [savefile] "/disk1/home/dmb/atom/BeebAccelerator/simulation/signals.gtkw"
-[timestart] 0
+[timestart] 3312
 [size] 1571 1048
 [pos] -1 -1
-*-16.000000 3530 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+*-9.000000 3530 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
 [treeopen] beeb_accelerator_tb.
 [treeopen] beeb_accelerator_tb.DUT.
 [treeopen] beeb_accelerator_tb.DUT.cpu.
@@ -27,21 +27,16 @@ beeb_accelerator_tb.DUT.DIRD
 @22
 beeb_accelerator_tb.DUT.Data[7:0]
 @28
-beeb_accelerator_tb.DUT.Phi0_a
-beeb_accelerator_tb.DUT.Phi0_b
-beeb_accelerator_tb.DUT.Phi0_c
-beeb_accelerator_tb.DUT.Phi0_d
 beeb_accelerator_tb.DUT.Phi1Out
 beeb_accelerator_tb.DUT.Phi2Out
 beeb_accelerator_tb.DUT.PhiIn
 beeb_accelerator_tb.DUT.clock
 beeb_accelerator_tb.DUT.cpu_clken
-beeb_accelerator_tb.DUT.state
-@29
-beeb_accelerator_tb.DUT.is_internal_r
 @22
 beeb_accelerator_tb.DUT.cpu_AB_next[15:0]
 beeb_accelerator_tb.DUT.cpu_AB[15:0]
+@29
+beeb_accelerator_tb.Sync
 @28
 beeb_accelerator_tb.DUT.cpu_WE_next
 beeb_accelerator_tb.DUT.cpu_WE
