@@ -182,8 +182,7 @@ module beeb_accelerator
    // Internal 64KB Block RAM
    always @(posedge cpu_clk)
      if (cpu_clken) begin
-//        if (cpu_WE_next && !cpu_AB_next[15] && (cpu_AB_next[14:12] < 3'b011 || !vdu_op || !shadow))
-        if (cpu_WE_next && (cpu_AB_next[14:12] < 3'b011 || !vdu_op || !shadow))
+        if (cpu_WE_next && !cpu_AB_next[15] && (cpu_AB_next[14:12] < 3'b011 || !vdu_op || !shadow))
           ram[cpu_AB_next] <= cpu_DO_next;
         ram_dout <= ram[cpu_AB_next];
      end
