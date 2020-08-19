@@ -169,7 +169,7 @@ module beeb_accelerator
    // Writable Registers
    always @(posedge cpu_clk)
      if (cpu_clken) begin
-        if (ext_cycle_end & cpu_WE) begin
+        if (cpu_WE) begin
            if (is_FE30)
              rom_latch <= cpu_DO[3:0];
            if (is_FE34)
@@ -220,7 +220,7 @@ module beeb_accelerator
    assign is_internal = !((page >= 8'h30 && page < 8'h80 && (shadow ? vdu_op : cpu_WE)) | // Accesses to Screen RAM from the first half of the OS are external
                           (page >= 8'h80 && page < 8'hC0 && rom_latch != 15) | // Accesses to ROMs other then BASIC are external
                           (page >= 8'hfc && page < 8'hff)                      // Accesses to IO are external
-                          );
+                          ) | is_FE34 | is_FE38;
 
    // When to advance the internal core a tick
    assign cpu_clken = (is_internal && clk_div == 0 && !(|force_slowdown)) ? 1'b1 :
@@ -282,10 +282,10 @@ module beeb_accelerator
    end
 
    // CPU Din Multiplexor
-   assign cpu_DI = is_internal ? ram_dout          :
-                   is_FE30     ? {4'b0, rom_latch} :
-                   is_FE34     ? {shadow, 7'b0}    :
+   assign cpu_DI = is_FE34     ? {shadow, 7'b0}    :
                    is_FE38     ? {2'b0, cpu_div}   :
+                   is_FE30     ? {4'b0, rom_latch} :
+                   is_internal ? ram_dout          :
                    data_r;
 
    // Sample Data on the falling edge of Phi2 (ref A in the datasheet)
