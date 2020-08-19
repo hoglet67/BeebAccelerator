@@ -164,7 +164,7 @@ module beeb_accelerator
 
    // Internal 64KB Block RAM - initialization data
    initial
-     $readmemh("../src/ram.mem", ram);
+     $readmemh("../src/ram_os12.mem", ram);
 
    // Writable Registers
    always @(posedge cpu_clk)
