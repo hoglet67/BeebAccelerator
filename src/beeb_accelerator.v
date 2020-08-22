@@ -14,6 +14,14 @@
 // Design Name: beeb_accelerator
 // Device: XC6SLX9
 
+// `define ELK
+
+`ifdef ELK
+ `define BASIC_ROM 11
+`else
+ `define BASIC_ROM 15
+`endif
+
 module beeb_accelerator
 (
  input         clock,
@@ -132,9 +140,13 @@ module beeb_accelerator
    reg         shadow = 1'b0;
    reg         vdu_op;
 
-   wire        is_FE30 = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b00);
-   wire        is_FE34 = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b01);
-   wire        is_FE38 = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b10);
+`ifdef ELK
+   wire        is_rom_latch    = (cpu_AB == 16'hFE05);
+`else
+   wire        is_rom_latch    = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b00);
+`endif
+   wire        is_shadow_latch = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b01);
+   wire        is_speed_latch  = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b10);
 
 
    // PLL to generate CPU clock of 50 * DCM_MULT / DCM_DIV MHz
@@ -170,17 +182,21 @@ module beeb_accelerator
 
    // Internal 64KB Block RAM - initialization data
    initial
+`ifdef ELK
+     $readmemh("../src/ram_elk.mem", ram);
+`else
      $readmemh("../src/ram_os12.mem", ram);
+`endif
 
    // Writable Registers
    always @(posedge cpu_clk)
      if (cpu_clken) begin
         if (cpu_WE) begin
-           if (is_FE30)
+           if (is_rom_latch)
              rom_latch <= cpu_DO[3:0];
-           if (is_FE34)
+           if (is_shadow_latch)
              shadow <= cpu_DO[7];
-           if (is_FE38)
+           if (is_speed_latch)
              cpu_div <= cpu_DO[5:0] - 1'b1;
         end
      end
@@ -224,9 +240,9 @@ module beeb_accelerator
 
    // Determine if the access is internal or external
    assign is_internal = !((page >= 8'h30 && page < 8'h80 && (shadow ? vdu_op : cpu_WE)) | // Accesses to Screen RAM from the first half of the OS are external
-                          (page >= 8'h80 && page < 8'hC0 && rom_latch != 15) | // Accesses to ROMs other then BASIC are external
-                          (page >= 8'hfc && page < 8'hff)                      // Accesses to IO are external
-                          ) | is_FE34 | is_FE38;
+                          (page >= 8'h80 && page < 8'hC0 && rom_latch != `BASIC_ROM)    | // Accesses to ROMs other then BASIC are external
+                          (page >= 8'hfc && page < 8'hff)                                 // Accesses to IO are external
+                          ) | is_shadow_latch | is_speed_latch;
 
    // When to advance the internal core a tick
    assign cpu_clken = (is_internal && clk_div == 0 && !(|force_slowdown)) ? 1'b1 :
@@ -288,10 +304,10 @@ module beeb_accelerator
    end
 
    // CPU Din Multiplexor
-   assign cpu_DI = is_FE34     ? {shadow, 7'b0}    :
-                   is_FE38     ? {2'b0, cpu_div}   :
-                   is_FE30     ? {4'b0, rom_latch} :
-                   is_internal ? ram_dout          :
+   assign cpu_DI = is_shadow_latch  ? {shadow, 7'b0}    :
+                   is_speed_latch   ? {2'b0, cpu_div}   :
+                   is_rom_latch     ? {4'b0, rom_latch} :
+                   is_internal      ? ram_dout          :
                    data_r;
 
    // Sample Data on the falling edge of Phi2 (ref A in the datasheet)
