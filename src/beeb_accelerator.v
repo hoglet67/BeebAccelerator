@@ -66,6 +66,12 @@ module beeb_accelerator
 
  );
 
+   // 50 MHz
+   //localparam  NPHI0_REGS = 3;
+   //localparam  PHIOUT_TAP = 1;
+   //localparam  DCM_MULT   = 2;
+   //localparam  DCM_DIV    = 2;
+
    // 64 MHz - meets timing
    //localparam  NPHI0_REGS = 4;
    //localparam  PHIOUT_TAP = 1;
