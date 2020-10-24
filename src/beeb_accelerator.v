@@ -15,9 +15,12 @@
 // Device: XC6SLX9
 
 // `define ELK
+// `define MASTER
 
 `ifdef ELK
  `define BASIC_ROM 11
+`elsif MASTER
+ `define BASIC_ROM 12
 `else
  `define BASIC_ROM 15
 `endif
@@ -135,6 +138,11 @@ module beeb_accelerator
 
    reg [3:0]   rom_latch;
 
+`ifdef MASTER
+   reg         ram_at_8000;
+   reg         ram_at_c000;
+`endif
+
    wire [7:0]  page = cpu_AB[15:8];
 
    reg         shadow = 1'b0;
@@ -184,6 +192,8 @@ module beeb_accelerator
    initial
 `ifdef ELK
      $readmemh("../src/ram_elk.mem", ram);
+`elsif MASTER
+     $readmemh("../src/ram_master.mem", ram);
 `else
      $readmemh("../src/ram_os12.mem", ram);
 `endif
@@ -200,6 +210,19 @@ module beeb_accelerator
              cpu_div <= cpu_DO[5:0] - 1'b1;
         end
      end
+
+   // Additional writable registers for the Master
+`ifdef MASTER
+   always @(posedge cpu_clk)
+     if (cpu_clken) begin
+        if (cpu_WE) begin
+           if (is_rom_latch)
+             ram_at_8000 <= cpu_DO[7];
+           if (is_shadow_latch)
+             ram_at_c000 <= cpu_DO[3];
+        end
+     end
+`endif
 
    // Internal 64KB Block RAM
    always @(posedge cpu_clk)
@@ -238,15 +261,33 @@ module beeb_accelerator
       .SYNC(cpu_SYNC)
       );
 
+  // On the 6502, latch Rdy in the middle of the cycle
+`ifdef MASTER
+  always @(Rdy)
+    cpu_RDY = Rdy;
+`else
+  always @(posedge Phi2Out)
+    cpu_RDY <= Rdy;
+`endif
+
    // Determine if the access is internal or external
    assign is_internal = !((page >= 8'h30 && page < 8'h80 && (shadow ? vdu_op : cpu_WE)) | // Accesses to Screen RAM from the first half of the OS are external
+`ifdef MASTER
+                          (page >= 8'h80 && page < 8'h90 && ram_at_8000)                | // Accesses to private MOS RAM (8000-8FFF)
+                          (page >= 8'hc0 && page < 8'hE0 && ram_at_c000)                | // Accesses to file system RAM (C000-DFFF)
+`endif
                           (page >= 8'h80 && page < 8'hC0 && rom_latch != `BASIC_ROM)    | // Accesses to ROMs other then BASIC are external
                           (page >= 8'hfc && page < 8'hff)                                 // Accesses to IO are external
-                          ) | is_shadow_latch | is_speed_latch;
+                          )
+`ifdef MASTER
+                        |                   is_speed_latch;                               // On the Master &FE34 is external
+`else
+                        | is_shadow_latch | is_speed_latch;                               // On the Beeb &FE34 is internal (otherwise the ROM lach gets trashed)
+`endif
 
    // When to advance the internal core a tick
-   assign cpu_clken = (is_internal && clk_div == 0 && !(|force_slowdown)) ? 1'b1 :
-                      (ext_busy && ext_cycle_end) ? 1'b1 :
+   assign cpu_clken = (is_internal && clk_div == 0 && !(|force_slowdown)) ? cpu_RDY :
+                      (ext_busy && ext_cycle_end)                         ? cpu_RDY :
                       1'b0;
 
    // Offset the external cycle by a couple of ticks to give some address hold time
@@ -304,11 +345,7 @@ module beeb_accelerator
    end
 
    // CPU Din Multiplexor
-   assign cpu_DI = is_shadow_latch  ? {shadow, 7'b0}    :
-                   is_speed_latch   ? {2'b0, cpu_div}   :
-                   is_rom_latch     ? {4'b0, rom_latch} :
-                   is_internal      ? ram_dout          :
-                   data_r;
+   assign cpu_DI = is_internal ? ram_dout : data_r;
 
    // Sample Data on the falling edge of Phi2 (ref A in the datasheet)
    always @(negedge Phi2Out) begin
