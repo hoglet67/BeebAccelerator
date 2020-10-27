@@ -17,6 +17,12 @@
 // `define ELK
 // `define MASTER
 
+// For the master, uncomment this to enable an aggressive caching
+// strategy of the main screen memory bank in shadow mode.
+
+// `define AGGRESSIVE
+
+
 `ifdef ELK
  `define BASIC_ROM 11
 `elsif MASTER
@@ -139,13 +145,107 @@ module beeb_accelerator
    reg [3:0]   rom_latch;
 
 `ifdef MASTER
+   // From FE30: bit 7
    reg         ram_at_8000;
-   reg         ram_at_c000;
+   // From FE34: IRR TST IFU ITU Y X E D
+   reg         acccon_e; // controls whether VDU  code accesses main or shadow RAM
+   reg         acccon_x; // controls whether !VDU code accesses main or shadow RAM
+   reg         acccon_y; // controls wither file system workspace is active at C000-DFFF
+`else
+   // These implement a B+ style shadow mode
+   reg         shadow = 1'b0;
 `endif
 
    wire [7:0]  page = cpu_AB[15:8];
 
-   reg         shadow = 1'b0;
+
+   // Access to the screen RAM (3000-7FFF, main bank and shadow bank)
+   //
+   // On the B/B+ the display is always driven from the main bank. The
+   // the optimal strategy depends on the shadow bit:
+   // - shadow off: Mirror the main bank (slow writes, fast reads)
+   // - shadow  on: Provide the shadow bank (fast writes, fast reads)
+   //
+   // On the Master, it's more complex as the either bank can be
+   // displayed.
+   //
+   // Screen RAM Access on the Master involves three actors:
+   // - the display hardware (controlled by acccon_d)
+   // - the VDU driver code (controlled by acccon_e)
+   // - all other code (controlled by acccon_x)
+   //
+   // When a non-shadow mode is selected (e.g. MODE 0)
+   // - acccon_d = 0
+   // - acccon_e = 0
+   // - acccon_x = 0
+   // i.e. all actors use the main bank, and the shadow bank is unused
+   // (unless the user manually maps it in calling OSBYTE 108)
+   //
+   // When a shadow mode is selected (e.g. MODE 128)
+   // - acccon_d = 1
+   // - acccon_e = 1
+   // - acccon_x = 0
+   // i.e. the display and VDU drivers use the shadow bank, leaving
+   // the user with the entirety of the main bank.
+   //
+   // The simplest approach is quite conservative: the fast (internal)
+   // RAM is used as a write-through cache of the main bank.
+   // - Writes to either bank are external (slow)
+   // - Reads from the shadow bank are external (slow)
+   // - Reads from the main bank are internal (fast)
+   //
+   // With this approach, either bank can be displayed, and an
+   // application that uses double buffering will function
+   // currectly. However, is is slower that the approach is used for
+   // the B/B+, as writes are always slow.
+   //
+   // A more aggressive approach would allow one of the banks in the
+   // machine to be entirely served from local fast RAM, and never
+   // written back to the main machine. For example, in shadow mode,
+   // don't write back accesses to the main bank. Clearly this will
+   // break applications that do double-buffering. But most don't
+   //
+   // Here's an illustration of those two strategies at play
+   //
+   // CLOCKS4 figures, with a 80MHz clock, run in MODE 7/135, HIMEM set manually
+   //
+   // Conservative:
+   //     Non-shadow, HIMEM=&7C00, 73.31 MHz
+   //     Non-shadow, HIMEM=&3000, 81.55 MHz
+   //     Shadow,     HIMEM=&7C00, 73.31 MHz
+   //     Shadow,     HIMEM=&3000, 81.55 MHz
+   //
+   // Aggressive:
+   //     Non-shadow, HIMEM=&7C00, 73.31 MHz
+   //     Non-shadow, HIMEM=&3000, 81.55 MHz
+   //     Shadow,     HIMEM=&7C00, 81.55 MHz <<<< this case gets faster
+   //     Shadow,     HIMEM=&3000, 81.55 MHz
+
+   // Signals to implement the above policies
+   //   screen_wr_ext - writes to the screen address range are external
+   //   screen_rd_ext - reads from the screen address range are external
+   //   fsb_wren      - write enable for the fast screen bank
+
+`ifdef MASTER
+   // Master
+ `ifdef AGGRESSIVE
+   // Aggressive caching strategy, i.e. in shadow mode, cache user writes to the main bank
+   wire screen_wr_ext = !(acccon_e & !acccon_x & !vdu_op);
+ `else
+   // Conservative (write-through) caching strategy, i.e. all writes are exteral
+   wire screen_wr_ext = 1'b1;
+ `endif
+   wire screen_rd_ext =  ((acccon_e & vdu_op) | (acccon_x & !vdu_op)); // reads from the shadow bank are external
+   wire fsb_wren      = !((acccon_e & vdu_op) | (acccon_x & !vdu_op)); // writes to the main bank are mirrored internally
+`else
+   // B/B+
+   wire screen_wr_ext = shadow ?  vdu_op : 1'b1;
+   wire screen_rd_ext = shadow ?  vdu_op : 1'b0;
+   wire fsb_wren      = shadow ? !vdu_op : 1'b1;
+`endif
+
+   // Indicates the last instruction was fetched from &C000-&DFFF
+   // i.e. the VDU driver
    reg         vdu_op;
 
 `ifdef ELK
@@ -155,7 +255,6 @@ module beeb_accelerator
 `endif
    wire        is_shadow_latch = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b01);
    wire        is_speed_latch  = (cpu_AB[15:4] == 12'hFE3) && (cpu_AB[3:2] == 2'b10);
-
 
    // PLL to generate CPU clock of 50 * DCM_MULT / DCM_DIV MHz
    DCM
@@ -202,32 +301,32 @@ module beeb_accelerator
    always @(posedge cpu_clk)
      if (cpu_clken) begin
         if (cpu_WE) begin
-           if (is_rom_latch)
+           // &FE30 - ROM latch
+           if (is_rom_latch) begin
              rom_latch <= cpu_DO[3:0];
-           if (is_shadow_latch)
-             shadow <= cpu_DO[7];
-           if (is_speed_latch)
-             cpu_div <= cpu_DO[5:0] - 1'b1;
-        end
-     end
-
-   // Additional writable registers for the Master
 `ifdef MASTER
-   always @(posedge cpu_clk)
-     if (cpu_clken) begin
-        if (cpu_WE) begin
-           if (is_rom_latch)
              ram_at_8000 <= cpu_DO[7];
-           if (is_shadow_latch)
-             ram_at_c000 <= cpu_DO[3];
+`endif
+           end
+           // &FE34 - Shadow latch (B+) / Access Control (Master)
+           if (is_shadow_latch) begin
+`ifdef MASTER
+              {acccon_y, acccon_x, acccon_e} <= cpu_DO[3:1];
+`else
+              shadow <= cpu_DO[7];
+`endif
+           end
+           // &FE38 - Speed Latch
+           if (is_speed_latch) begin
+             cpu_div <= cpu_DO[5:0] - 1'b1;
+           end
         end
      end
-`endif
 
    // Internal 64KB Block RAM
    always @(posedge cpu_clk)
      if (cpu_clken) begin
-        if (cpu_WE_next && !cpu_AB_next[15] && (cpu_AB_next[14:12] < 3'b011 || !vdu_op || !shadow))
+        if (cpu_WE_next && !cpu_AB_next[15] && (cpu_AB_next[14:12] < 3'b011 || fsb_wren))
           ram[cpu_AB_next] <= cpu_DO_next;
         ram_dout <= ram[cpu_AB_next];
      end
@@ -270,19 +369,36 @@ module beeb_accelerator
     cpu_RDY <= Rdy;
 `endif
 
-   // Determine if the access is internal or external
-   assign is_internal = !((page >= 8'h30 && page < 8'h80 && (shadow ? vdu_op : cpu_WE)) | // Accesses to Screen RAM from the first half of the OS are external
+   // Determine if the access is internal (fast) or external (slow)
+   assign is_internal
+     = !(
+         (page >= 8'h30 && page < 8'h80 && (cpu_WE ? screen_wr_ext : screen_rd_ext)) |
 `ifdef MASTER
-                          (page >= 8'h80 && page < 8'h90 && ram_at_8000)                | // Accesses to private MOS RAM (8000-8FFF)
-                          (page >= 8'hc0 && page < 8'hE0 && ram_at_c000)                | // Accesses to file system RAM (C000-DFFF)
+         // Accesses to private MOS RAM (8000-8FFF)
+         (page >= 8'h80 && page < 8'h90 && ram_at_8000) |
+         // Accesses to file system RAM (C000-DFFF)
+         // or
+         // Executing the VDU driver to run from external ROM
+         //
+         // The Master has logic in one of it's custom chips to
+         // determine the destination bank of a screen access by the
+         // CPU. Part of this depends on whether the instruction
+         // opcode fetch was from the VDU driver or not. For this to
+         // function, the VDU driver must be run from slow external
+         // ROM. This is the purpose of the acccon_e term.
+         (page >= 8'hc0 && page < 8'hE0 && (acccon_y | acccon_e)) |
 `endif
-                          (page >= 8'h80 && page < 8'hC0 && rom_latch != `BASIC_ROM)    | // Accesses to ROMs other then BASIC are external
-                          (page >= 8'hfc && page < 8'hff)                                 // Accesses to IO are external
-                          )
+         // Accesses to ROMs other then BASIC are external
+         (page >= 8'h80 && page < 8'hC0 && rom_latch != `BASIC_ROM) |
+         // Accesses to IO are external
+         (page >= 8'hfc && page < 8'hff)
+         )
 `ifdef MASTER
-                        |                   is_speed_latch;                               // On the Master &FE34 is external
+       // On the Master &FE34 is external
+       |                   is_speed_latch;
 `else
-                        | is_shadow_latch | is_speed_latch;                               // On the Beeb &FE34 is internal (otherwise the ROM lach gets trashed)
+       // On the Beeb &FE34 is internal (otherwise the ROM lach gets trashed)
+       | is_shadow_latch | is_speed_latch;
 `endif
 
    // When to advance the internal core a tick
@@ -332,6 +448,8 @@ module beeb_accelerator
          cpu_AB <= cpu_AB_next;
          cpu_WE <= cpu_WE_next;
          cpu_DO <= cpu_DO_next;
+         // TODO: On the master, the should also take account of acccon_y
+         // (i.e. code running from &C000-&DFFF does not act like the VDU driver)
          if (cpu_SYNC)
            vdu_op <= cpu_AB[15:13] == 3'b110;
       end
