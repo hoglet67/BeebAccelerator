@@ -110,6 +110,7 @@ module beeb_accelerator
    wire        cpu_clk;
    wire        clk0;
 
+   reg         tick;
    reg [5:0]   clk_div = 'b0;
    reg [5:0]   cpu_div = 'b0;
 
@@ -340,6 +341,8 @@ module beeb_accelerator
         clk_div <= 'b0;
       else
         clk_div <= clk_div + 1'b1;
+      // Pipeline the clock enable tick
+      tick <= (clk_div == 0);
    end
 
    assign Phi1Out = !Phi0_r[PHIOUT_TAP];
@@ -402,8 +405,8 @@ module beeb_accelerator
 `endif
 
    // When to advance the internal core a tick
-   assign cpu_clken = (is_internal && clk_div == 0 && !(|force_slowdown)) ? cpu_RDY :
-                      (ext_busy && ext_cycle_end)                         ? cpu_RDY :
+   assign cpu_clken = (is_internal && tick && !(|force_slowdown)) ? cpu_RDY :
+                      (ext_busy && ext_cycle_end)                 ? cpu_RDY :
                       1'b0;
 
    // Offset the external cycle by a couple of ticks to give some address hold time
