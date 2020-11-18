@@ -143,7 +143,7 @@ module beeb_accelerator
    reg         ext_cycle_start;
    wire        ext_cycle_end;
 
-   reg [3:0]   rom_latch;
+   reg         rom_latch_basic;
 
 `ifdef MASTER
    // From FE30: bit 7
@@ -304,7 +304,7 @@ module beeb_accelerator
         if (cpu_WE) begin
            // &FE30 - ROM latch
            if (is_rom_latch) begin
-             rom_latch <= cpu_DO[3:0];
+             rom_latch_basic <= (cpu_DO[3:0] == `BASIC_ROM);
 `ifdef MASTER
              ram_at_8000 <= cpu_DO[7];
 `endif
@@ -392,7 +392,7 @@ module beeb_accelerator
          (page >= 8'hc0 && page < 8'hE0 && (acccon_y | acccon_e)) |
 `endif
          // Accesses to ROMs other then BASIC are external
-         (page >= 8'h80 && page < 8'hC0 && rom_latch != `BASIC_ROM) |
+         (page >= 8'h80 && page < 8'hC0 && !rom_latch_basic) |
          // Accesses to IO are external
          (page >= 8'hfc && page < 8'hff)
          )
