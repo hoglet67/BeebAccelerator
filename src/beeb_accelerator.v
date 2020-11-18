@@ -22,6 +22,7 @@
 
 // `define AGGRESSIVE
 
+`define IS_INTERNAL_LOOKAHEAD
 
 `ifdef ELK
  `define BASIC_ROM 11
@@ -133,7 +134,6 @@ module beeb_accelerator
    reg         cpu_NMI;
    reg         cpu_RDY;
    wire        cpu_SYNC;
-   wire        is_internal;
    reg [3:0]   force_slowdown = 4'b0;
 
    reg [7:0]   ram[0:65535];
@@ -156,9 +156,6 @@ module beeb_accelerator
    // These implement a B+ style shadow mode
    reg         shadow = 1'b0;
 `endif
-
-   wire [7:0]  page = cpu_AB[15:8];
-
 
    // Access to the screen RAM (3000-7FFF, main bank and shadow bank)
    //
@@ -372,8 +369,58 @@ module beeb_accelerator
     cpu_RDY <= Rdy;
 `endif
 
+
+`ifdef IS_INTERNAL_LOOKAHEAD
+
+   reg        is_internal;
+
+   wire [7:0] page = cpu_AB_next[15:8];
+
+   wire       is_shadow_latch_next = (cpu_AB_next[15:4] == 12'hFE3) && (cpu_AB_next[3:2] == 2'b01);
+   wire       is_speed_latch_next  = (cpu_AB_next[15:4] == 12'hFE3) && (cpu_AB_next[3:2] == 2'b10);
+
    // Determine if the access is internal (fast) or external (slow)
-   assign is_internal
+   wire is_internal_next
+     = !(
+         (page >= 8'h30 && page < 8'h80 && (cpu_WE_next ? screen_wr_ext : screen_rd_ext)) |
+`ifdef MASTER
+         // Accesses to private MOS RAM (8000-8FFF)
+         (page >= 8'h80 && page < 8'h90 && ram_at_8000) |
+         // Accesses to file system RAM (C000-DFFF)
+         // or
+         // Executing the VDU driver to run from external ROM
+         //
+         // The Master has logic in one of it's custom chips to
+         // determine the destination bank of a screen access by the
+         // CPU. Part of this depends on whether the instruction
+         // opcode fetch was from the VDU driver or not. For this to
+         // function, the VDU driver must be run from slow external
+         // ROM. This is the purpose of the acccon_e term.
+         (page >= 8'hc0 && page < 8'hE0 && (acccon_y | acccon_e)) |
+`endif
+         // Accesses to ROMs other then BASIC are external
+         (page >= 8'h80 && page < 8'hC0 && !rom_latch_basic) |
+         // Accesses to IO are external
+         (page >= 8'hfc && page < 8'hff)
+         )
+`ifdef MASTER
+       // On the Master &FE34 is external
+       |                        is_speed_latch_next;
+`else
+       // On the Beeb &FE34 is internal (otherwise the ROM lach gets trashed)
+       | is_shadow_latch_next | is_speed_latch_next;
+`endif
+
+   always @(posedge cpu_clk)
+     if (cpu_clken)
+       is_internal <= is_internal_next;
+
+`else
+
+   wire [7:0]  page = cpu_AB[15:8];
+
+   // Determine if the access is internal (fast) or external (slow)
+   wire is_internal
      = !(
          (page >= 8'h30 && page < 8'h80 && (cpu_WE ? screen_wr_ext : screen_rd_ext)) |
 `ifdef MASTER
@@ -403,6 +450,9 @@ module beeb_accelerator
        // On the Beeb &FE34 is internal (otherwise the ROM lach gets trashed)
        | is_shadow_latch | is_speed_latch;
 `endif
+
+`endif
+
 
    // When to advance the internal core a tick
    assign cpu_clken = (is_internal && tick && !(|force_slowdown)) ? cpu_RDY :
