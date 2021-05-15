@@ -507,10 +507,12 @@ module beeb_accelerator
          cpu_AB <= cpu_AB_next;
          cpu_WE <= cpu_WE_next;
          cpu_DO <= cpu_DO_next;
-         // TODO: On the master, the should also take account of acccon_y
-         // (i.e. code running from &C000-&DFFF does not act like the VDU driver)
          if (cpu_SYNC)
+`ifdef MASTER
+           vdu_op <= (cpu_AB[15:13] == 3'b110) && !acccon_y;
+`else
            vdu_op <= cpu_AB[15:13] == 3'b110;
+`endif
       end
    end
 
