@@ -103,16 +103,16 @@ module beeb_accelerator
    //localparam  DCM_DIV    = 5;
 
    // 90MHz - meets timing
-   localparam  NPHI0_REGS = 6;
-   localparam  PHIOUT_TAP = 1;
-   localparam  DCM_MULT   = 9;
-   localparam  DCM_DIV    = 5;
-
-   // 100 MHz (doesn't meet timing, but seems stable in practice)
    //localparam  NPHI0_REGS = 6;
    //localparam  PHIOUT_TAP = 1;
-   //localparam  DCM_MULT   = 4;
-   //localparam  DCM_DIV    = 2;
+   //localparam  DCM_MULT   = 9;
+   //localparam  DCM_DIV    = 5;
+
+   // 100 MHz (doesn't meet timing, but seems stable in practice)
+   localparam  NPHI0_REGS = 6;
+   localparam  PHIOUT_TAP = 1;
+   localparam  DCM_MULT   = 4;
+   localparam  DCM_DIV    = 2;
 
    wire        cpu_clk;
    wire        clk0;
