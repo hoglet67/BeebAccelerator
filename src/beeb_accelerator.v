@@ -126,6 +126,7 @@ module beeb_accelerator
    wire        cpu_clken;
    reg         cpu_reset;
    wire [15:0] cpu_AB_next;
+   reg [14:0]  scrub_AB;
    reg [15:0]  cpu_AB;
    reg [15:0]  beeb_AB;
    wire [7:0]  cpu_DI;
@@ -144,6 +145,7 @@ module beeb_accelerator
 
    reg [7:0]   ram[0:65535];
    reg [7:0]   ram_dout;
+   reg [7:0]   ram_dout2; // Second port to suport scrubbing RAM back to external RAM
 
    reg         ext_busy;
    reg         ext_cycle_start;
@@ -243,7 +245,7 @@ module beeb_accelerator
    wire fsb_wren      = !((acccon_e & vdu_op) | (acccon_x & !vdu_op)); // writes to the main bank are mirrored internally
 `else
    // B/B+
-   wire screen_wr_ext = shadow ?  vdu_op : 1'b1;
+   wire screen_wr_ext = shadow ?  vdu_op : 1'b0;
    wire screen_rd_ext = shadow ?  vdu_op : 1'b0;
    wire fsb_wren      = shadow ? !vdu_op : 1'b1;
 `endif
@@ -470,12 +472,14 @@ module beeb_accelerator
 
    always @(posedge cpu_clk) begin
       ext_cycle_start <= ext_cycle_end;
+      ram_dout2 <= ram[{1'b0, scrub_AB}];
       if (ext_cycle_start) begin
          if (is_internal) begin
-            beeb_AB  <= 16'hFFFF;
-            beeb_WE  <=  1'b0;
-            beeb_DO  <=  8'hFF;
+            beeb_AB  <=  {1'b0, scrub_AB};
+            beeb_WE  <=  1'b1;
+            beeb_DO  <=  ram_dout2;
             ext_busy <=  1'b0;
+            scrub_AB <=  scrub_AB + 1'b1;
          end else begin
             beeb_AB  <= cpu_AB;
             beeb_WE  <= cpu_WE;
